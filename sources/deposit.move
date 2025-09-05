@@ -203,3 +203,16 @@ public fun can_recipient_withdraw<CoinType>(
     let now = clock.timestamp_ms();
     now >= deposit.unlock_time
 }
+
+
+public fun time_until_unlock<CoinType>(
+    deposit: &TimeDeposit<CoinType>,
+    clock: &Clock
+): u64 {
+    let now = clock.timestamp_ms();
+    if (now >= deposit.unlock_time) {
+        0
+    } else {
+        deposit.unlock_time - now
+    }
+}
