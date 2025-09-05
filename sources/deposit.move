@@ -1,7 +1,7 @@
 module time_locked_deposit::deposit;
 
 
-use sui::balance::Balance;
+use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::event;
@@ -17,7 +17,6 @@ const EInvalidRecipient: u64 = 5;
 
 const MS_PER_MINUTE: u64 = 60000;
 const MAX_DURATION_MINUTES: u64 = 525600;
-
 
 
 public struct TimeDeposit<phantom CoinType> has key {
@@ -97,6 +96,45 @@ public entry fun create_deposit<CoinType>(
         duration: duration_ms,
         unlock_time,
     });
+}
+
+
+public entry fun withdraw_by_depositor<CoinType>(
+    deposit: TimeDeposit<CoinType>,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    assert!(sender == deposit.depositor, EUnauthorized);
+    
+    let now = clock.timestamp_ms();
+    let deposit_id = object::uid_to_inner(&deposit.id);
+    
+    let TimeDeposit { 
+        id, 
+        mut balance, 
+        depositor: _, 
+        recipient: _, 
+        start_time: _, 
+        duration: _, 
+        unlock_time: _ 
+    } = deposit;
+    
+    let amount = balance.value();
+    let coin = coin::take(&mut balance, amount, ctx);
+    
+    transfer::public_transfer(coin, sender);
+    
+    event::emit(DepositWithdrawn<CoinType> {
+        deposit_id,
+        withdrawer: sender,
+        withdraw_time: now,
+        amount_withdrawn: amount,
+        withdrawn_by: 0, // 0 indicates depositor
+    });
+    
+    balance::destroy_zero(balance);
+    object::delete(id);
 }
 
 
