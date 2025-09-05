@@ -138,3 +138,42 @@ public entry fun withdraw_by_depositor<CoinType>(
 }
 
 
+public entry fun withdraw_by_recipient<CoinType>(
+    deposit: TimeDeposit<CoinType>,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    let sender = tx_context::sender(ctx);
+    let now = clock.timestamp_ms();
+    
+    assert!(sender == deposit.recipient, EUnauthorized);
+    assert!(now >= deposit.unlock_time, ETooEarly);
+    
+    let deposit_id = object::uid_to_inner(&deposit.id);
+    
+    let TimeDeposit { 
+        id, 
+        mut balance, 
+        depositor: _, 
+        recipient: _, 
+        start_time: _, 
+        duration: _, 
+        unlock_time: _ 
+    } = deposit;
+    
+    let amount = balance.value();
+    let coin = coin::take(&mut balance, amount, ctx);
+    
+    transfer::public_transfer(coin, sender);
+
+    event::emit(DepositWithdrawn<CoinType> {
+        deposit_id,
+        withdrawer: sender,
+        withdraw_time: now,
+        amount_withdrawn: amount,
+        withdrawn_by: 1, // 1 = recipient
+    });
+    
+    balance::destroy_zero(balance);
+    object::delete(id);
+}
