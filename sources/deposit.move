@@ -194,3 +194,12 @@ public fun get_deposit_info<CoinType>(
         current_time
     )
 }
+
+
+public fun can_recipient_withdraw<CoinType>(
+    deposit: &TimeDeposit<CoinType>,
+    clock: &Clock
+): bool {
+    let now = clock.timestamp_ms();
+    now >= deposit.unlock_time
+}
