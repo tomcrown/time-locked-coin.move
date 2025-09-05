@@ -177,3 +177,20 @@ public entry fun withdraw_by_recipient<CoinType>(
     balance::destroy_zero(balance);
     object::delete(id);
 }
+
+
+public fun get_deposit_info<CoinType>(
+    deposit: &TimeDeposit<CoinType>,
+    clock: &Clock
+): (address, address, u64, u64, u64, u64, u64) {
+    let current_time = clock.timestamp_ms();
+    (
+        deposit.depositor,
+        deposit.recipient,
+        deposit.balance.value(),
+        deposit.start_time,
+        deposit.duration,
+        deposit.unlock_time,
+        current_time
+    )
+}
