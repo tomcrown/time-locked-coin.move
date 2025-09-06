@@ -46,3 +46,43 @@ fun test_create_deposit_success() {
     assert_eq(effects.num_user_events(), 1); // Expect exactly one DepositCreated event
     scenario.end();
 }
+
+
+#[test]
+fun test_get_deposit_info_returns_correct_data() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(500, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 60, &clock, scenario.ctx()); // 60 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        
+        let (depositor, recipient, amount, start_time, duration, unlock_time, current_time) 
+            = get_deposit_info(&deposit, &clock);
+        
+        assert_eq(depositor, DEPOSITOR);
+        assert_eq(recipient, RECIPIENT);
+        assert_eq(amount, 500);
+        assert_eq(duration, 60 * MS_PER_MINUTE);
+        assert_eq(unlock_time, start_time + duration);
+        assert_eq(current_time, start_time);
+        
+        ts::return_shared(deposit);
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
