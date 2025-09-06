@@ -15,3 +15,12 @@ use time_locked_deposit::deposit::{
     get_deposit_info, can_recipient_withdraw, time_until_unlock,
     EInvalidDuration, ETooEarly, EInvalidAmount, EDurationTooLong, EUnauthorized, EInvalidRecipient
 };
+
+
+const DEPOSITOR: address = @0xA;
+const RECIPIENT: address = @0xB;
+const THIRD_PARTY: address = @0xC;
+
+
+const MS_PER_MINUTE: u64 = 60000;
+const MAX_DURATION_MINUTES: u64 = 525600; 
