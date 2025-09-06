@@ -284,3 +284,23 @@ fun test_time_until_unlock_function() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = EInvalidDuration)]
+fun test_create_deposit_fails_zero_duration() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 0, &clock, scenario.ctx()); // invalid: 0 duration
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
