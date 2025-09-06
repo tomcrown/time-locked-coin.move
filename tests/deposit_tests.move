@@ -304,3 +304,23 @@ fun test_create_deposit_fails_zero_duration() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = EInvalidAmount)]
+fun test_create_deposit_fails_zero_amount() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(0, scenario.ctx()); // 0 amount
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // invalid: 0 amount
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
