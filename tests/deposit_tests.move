@@ -393,3 +393,32 @@ fun test_recipient_withdraw_fails_before_unlock() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = EUnauthorized)]
+fun test_depositor_withdraw_fails_wrong_user() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 5, &clock, scenario.ctx());
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, THIRD_PARTY); // Wrong user tries to withdraw
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); // unauthorized
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
