@@ -86,3 +86,34 @@ fun test_get_deposit_info_returns_correct_data() {
 
     scenario.end();
 }
+
+
+#[test]
+fun test_depositor_can_withdraw_anytime() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(200, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // 10 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); // Should succeed immediately
+        ts::return_shared(clock);
+    };
+
+    let effects = ts::next_tx(&mut scenario, DEPOSITOR);
+    assert_eq(effects.num_user_events(), 1); // Expect DepositWithdrawn event
+    scenario.end();
+}
