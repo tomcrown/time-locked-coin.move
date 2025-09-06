@@ -324,3 +324,23 @@ fun test_create_deposit_fails_zero_amount() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = EDurationTooLong)]
+fun test_create_deposit_fails_excessive_duration() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, MAX_DURATION_MINUTES + 1, &clock, scenario.ctx()); // invalid: too long
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
