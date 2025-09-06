@@ -209,3 +209,78 @@ fun test_can_recipient_withdraw_function() {
 
     scenario.end();
 }
+
+
+#[test]
+fun test_time_until_unlock_function() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(150, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 3, &clock, scenario.ctx()); // 3 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        
+        // Should return full duration initially
+        assert_eq(time_until_unlock(&deposit, &clock), 3 * MS_PER_MINUTE);
+        
+        ts::return_shared(deposit);
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let mut clock = ts::take_shared<Clock>(&scenario);
+        increment_for_testing(&mut clock, 1 * MS_PER_MINUTE); // Fast forward 1 minute
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        
+        // Should return remaining time (2 minutes)
+        assert_eq(time_until_unlock(&deposit, &clock), 2 * MS_PER_MINUTE);
+        
+        ts::return_shared(deposit);
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let mut clock = ts::take_shared<Clock>(&scenario);
+        increment_for_testing(&mut clock, 2 * MS_PER_MINUTE); // Fast forward another 2 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        
+        // Should return 0 when unlocked
+        assert_eq(time_until_unlock(&deposit, &clock), 0);
+        
+        ts::return_shared(deposit);
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
