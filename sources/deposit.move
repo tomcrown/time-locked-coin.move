@@ -85,7 +85,7 @@ public entry fun create_deposit<CoinType>(
         unlock_time,
     };
     
-    transfer::transfer(time_deposit, depositor);
+    transfer::share_object(time_deposit);
 
     event::emit(DepositCreated<CoinType> {
         deposit_id: deposit_id_copy,
