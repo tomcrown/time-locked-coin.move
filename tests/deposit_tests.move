@@ -117,3 +117,42 @@ fun test_depositor_can_withdraw_anytime() {
     assert_eq(effects.num_user_events(), 1); // Expect DepositWithdrawn event
     scenario.end();
 }
+
+
+#[test]
+fun test_recipient_can_withdraw_after_unlock() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(300, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 5, &clock, scenario.ctx()); // 5 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let mut clock = ts::take_shared<Clock>(&scenario);
+        increment_for_testing(&mut clock, 5 * MS_PER_MINUTE); // Fast forward 5 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, RECIPIENT);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); // Should succeed after unlock
+        ts::return_shared(clock);
+    };
+
+    let effects = ts::next_tx(&mut scenario, RECIPIENT);
+    assert_eq(effects.num_user_events(), 1); // Expect DepositWithdrawn event
+    scenario.end();
+}
