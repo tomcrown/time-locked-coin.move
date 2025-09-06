@@ -364,3 +364,32 @@ fun test_create_deposit_fails_same_recipient_as_depositor() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = ETooEarly)]
+fun test_recipient_withdraw_fails_before_unlock() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // 10 minutes
+        ts::return_shared(clock);
+    };
+
+    ts::next_tx(&mut scenario, RECIPIENT);
+
+    {
+        let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
+        let clock = ts::take_shared<Clock>(&scenario);
+        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); // too early
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
