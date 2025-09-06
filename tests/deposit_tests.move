@@ -344,3 +344,23 @@ fun test_create_deposit_fails_excessive_duration() {
 
     scenario.end();
 }
+
+
+#[test, expected_failure(abort_code = EInvalidRecipient)]
+fun test_create_deposit_fails_same_recipient_as_depositor() {
+    let mut scenario = ts::begin(DEPOSITOR); {
+        let clock = create_for_testing(scenario.ctx());
+        share_for_testing(clock);
+    };
+
+    ts::next_tx(&mut scenario, DEPOSITOR);
+
+    {
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
+        let clock = ts::take_shared<Clock>(&scenario);
+        create_deposit<u64>(coin, DEPOSITOR, 10, &clock, scenario.ctx()); // invalid: same as depositor
+        ts::return_shared(clock);
+    };
+
+    scenario.end();
+}
