@@ -38,12 +38,12 @@ fun test_create_deposit_success() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(1000, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 30, &clock, scenario.ctx()); // 30 minutes
+        create_deposit<u64>(coin, RECIPIENT, 30, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
     let effects = ts::next_tx(&mut scenario, DEPOSITOR);
-    assert_eq(effects.num_user_events(), 1); // Expect exactly one DepositCreated event
+    assert_eq(effects.num_user_events(), 1);
     scenario.end();
 }
 
@@ -60,7 +60,7 @@ fun test_get_deposit_info_returns_correct_data() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(500, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 60, &clock, scenario.ctx()); // 60 minutes
+        create_deposit<u64>(coin, RECIPIENT, 60, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -100,7 +100,7 @@ fun test_depositor_can_withdraw_anytime() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(200, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // 10 minutes
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -109,12 +109,12 @@ fun test_depositor_can_withdraw_anytime() {
     {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
-        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); // Should succeed immediately
+        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
     let effects = ts::next_tx(&mut scenario, DEPOSITOR);
-    assert_eq(effects.num_user_events(), 1); // Expect DepositWithdrawn event
+    assert_eq(effects.num_user_events(), 1); 
     scenario.end();
 }
 
@@ -131,7 +131,7 @@ fun test_recipient_can_withdraw_after_unlock() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(300, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 5, &clock, scenario.ctx()); // 5 minutes
+        create_deposit<u64>(coin, RECIPIENT, 5, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -139,7 +139,7 @@ fun test_recipient_can_withdraw_after_unlock() {
 
     {
         let mut clock = ts::take_shared<Clock>(&scenario);
-        increment_for_testing(&mut clock, 5 * MS_PER_MINUTE); // Fast forward 5 minutes
+        increment_for_testing(&mut clock, 5 * MS_PER_MINUTE); 
         ts::return_shared(clock);
     };
 
@@ -148,12 +148,12 @@ fun test_recipient_can_withdraw_after_unlock() {
     {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
-        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); // Should succeed after unlock
+        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
     let effects = ts::next_tx(&mut scenario, RECIPIENT);
-    assert_eq(effects.num_user_events(), 1); // Expect DepositWithdrawn event
+    assert_eq(effects.num_user_events(), 1); 
     scenario.end();
 }
 
@@ -170,7 +170,7 @@ fun test_can_recipient_withdraw_function() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 2, &clock, scenario.ctx()); // 2 minutes
+        create_deposit<u64>(coin, RECIPIENT, 2, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -180,7 +180,6 @@ fun test_can_recipient_withdraw_function() {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
         
-        // Initially should return false
         assert_eq(can_recipient_withdraw(&deposit, &clock), false);
         
         ts::return_shared(deposit);
@@ -191,7 +190,7 @@ fun test_can_recipient_withdraw_function() {
 
     {
         let mut clock = ts::take_shared<Clock>(&scenario);
-        increment_for_testing(&mut clock, 2 * MS_PER_MINUTE); // Fast forward 2 minutes
+        increment_for_testing(&mut clock, 2 * MS_PER_MINUTE); 
         ts::return_shared(clock);
     };
 
@@ -223,7 +222,7 @@ fun test_time_until_unlock_function() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(150, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 3, &clock, scenario.ctx()); // 3 minutes
+        create_deposit<u64>(coin, RECIPIENT, 3, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -233,7 +232,6 @@ fun test_time_until_unlock_function() {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
         
-        // Should return full duration initially
         assert_eq(time_until_unlock(&deposit, &clock), 3 * MS_PER_MINUTE);
         
         ts::return_shared(deposit);
@@ -244,7 +242,7 @@ fun test_time_until_unlock_function() {
 
     {
         let mut clock = ts::take_shared<Clock>(&scenario);
-        increment_for_testing(&mut clock, 1 * MS_PER_MINUTE); // Fast forward 1 minute
+        increment_for_testing(&mut clock, 1 * MS_PER_MINUTE); 
         ts::return_shared(clock);
     };
 
@@ -254,7 +252,6 @@ fun test_time_until_unlock_function() {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
         
-        // Should return remaining time (2 minutes)
         assert_eq(time_until_unlock(&deposit, &clock), 2 * MS_PER_MINUTE);
         
         ts::return_shared(deposit);
@@ -265,7 +262,7 @@ fun test_time_until_unlock_function() {
 
     {
         let mut clock = ts::take_shared<Clock>(&scenario);
-        increment_for_testing(&mut clock, 2 * MS_PER_MINUTE); // Fast forward another 2 minutes
+        increment_for_testing(&mut clock, 2 * MS_PER_MINUTE); 
         ts::return_shared(clock);
     };
 
@@ -275,7 +272,6 @@ fun test_time_until_unlock_function() {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
         
-        // Should return 0 when unlocked
         assert_eq(time_until_unlock(&deposit, &clock), 0);
         
         ts::return_shared(deposit);
@@ -298,7 +294,7 @@ fun test_create_deposit_fails_zero_duration() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 0, &clock, scenario.ctx()); // invalid: 0 duration
+        create_deposit<u64>(coin, RECIPIENT, 0, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -316,9 +312,9 @@ fun test_create_deposit_fails_zero_amount() {
     ts::next_tx(&mut scenario, DEPOSITOR);
 
     {
-        let coin: Coin<u64> = coin::mint_for_testing<u64>(0, scenario.ctx()); // 0 amount
+        let coin: Coin<u64> = coin::mint_for_testing<u64>(0, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // invalid: 0 amount
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -338,7 +334,7 @@ fun test_create_deposit_fails_excessive_duration() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, MAX_DURATION_MINUTES + 1, &clock, scenario.ctx()); // invalid: too long
+        create_deposit<u64>(coin, RECIPIENT, MAX_DURATION_MINUTES + 1, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -358,7 +354,7 @@ fun test_create_deposit_fails_same_recipient_as_depositor() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, DEPOSITOR, 10, &clock, scenario.ctx()); // invalid: same as depositor
+        create_deposit<u64>(coin, DEPOSITOR, 10, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -378,7 +374,7 @@ fun test_recipient_withdraw_fails_before_unlock() {
     {
         let coin: Coin<u64> = coin::mint_for_testing<u64>(100, scenario.ctx());
         let clock = ts::take_shared<Clock>(&scenario);
-        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); // 10 minutes
+        create_deposit<u64>(coin, RECIPIENT, 10, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -387,7 +383,7 @@ fun test_recipient_withdraw_fails_before_unlock() {
     {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
-        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); // too early
+        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -411,12 +407,12 @@ fun test_depositor_withdraw_fails_wrong_user() {
         ts::return_shared(clock);
     };
 
-    ts::next_tx(&mut scenario, THIRD_PARTY); // Wrong user tries to withdraw
+    ts::next_tx(&mut scenario, THIRD_PARTY); 
 
     {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
-        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); // unauthorized
+        withdraw_by_depositor<u64>(deposit, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
@@ -444,16 +440,16 @@ fun test_recipient_withdraw_fails_wrong_user() {
 
     {
         let mut clock = ts::take_shared<Clock>(&scenario);
-        increment_for_testing(&mut clock, 1 * MS_PER_MINUTE); // Wait for unlock
+        increment_for_testing(&mut clock, 1 * MS_PER_MINUTE); 
         ts::return_shared(clock);
     };
 
-    ts::next_tx(&mut scenario, THIRD_PARTY); // Wrong user tries to withdraw
+    ts::next_tx(&mut scenario, THIRD_PARTY); 
 
     {
         let deposit = ts::take_shared<TimeDeposit<u64>>(&scenario);
         let clock = ts::take_shared<Clock>(&scenario);
-        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); // unauthorized
+        withdraw_by_recipient<u64>(deposit, &clock, scenario.ctx()); 
         ts::return_shared(clock);
     };
 
