@@ -104,6 +104,7 @@ public entry fun withdraw_by_depositor<CoinType>(
     clock: &Clock,
     ctx: &mut TxContext
 ) {
+    
     let sender = tx_context::sender(ctx);
     assert!(sender == deposit.depositor, EUnauthorized);
     
