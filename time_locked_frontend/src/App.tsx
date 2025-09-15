@@ -8,8 +8,8 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 
 // ----- IMPORTANT: update these constants to match your deployed package -----
-const PACKAGE_ID = "0xREPLACE_WITH_YOUR_PACKAGE_ID"; // e.g. 0xabc...
-const MODULE_NAME = "time_locked_deposit"; // your Move module name
+const PACKAGE_ID = "0x3267853684c621750d182868a26fbe51adc96f7e169cb435da7a57204ac4b10a"; // e.g. 0xabc...
+const MODULE_NAME = "deposit"; // your Move module name
 const CLOCK_OBJECT_ID = "0x6"; // common clock object id on testnet/mainnet
 // ---------------------------------------------------------------------------
 
@@ -29,11 +29,16 @@ export default function TimeLockedDepositUI() {
   const [info, setInfo] = useState<any | null>(null);
 
   const amount = parseFloat(amountInput || "0");
+
+  const [recipientAddress, setRecipientAddress] = useState("");
+
   const isCreateDisabled =
-    !currentAccount || !amount || amount <= 0 || durationMinutes <= 0;
+    !currentAccount || !amount || amount <= 0 || durationMinutes <= 0 || !recipientAddress;
 
   const isCreateCustomDisabled =
     !currentAccount || !coinType || !amount || amount <= 0 || durationMinutes <= 0;
+
+    
 
   // Utility: convert human amount to mist (assumes 9 decimals like SUI)
   function toMist(n: number) {
@@ -258,6 +263,8 @@ export default function TimeLockedDepositUI() {
               value={durationMinutes}
               onChange={(e) => setDurationMinutes(parseInt(e.target.value || "0"))}
             />
+
+            
 
             <button
               onClick={createDeposit}
