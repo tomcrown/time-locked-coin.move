@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   ConnectButton,
   useCurrentAccount,
@@ -22,7 +22,7 @@ export default function TimeLockedDepositUI() {
   const [amountInput, setAmountInput] = useState("");
   const [durationMinutes, setDurationMinutes] = useState<number>(60);
   const [selectedDepositId, setSelectedDepositId] = useState("");
-  const [coinType, setCoinType] = useState<string>("");
+  const [coinType] = useState<string>("");
   const [info, setInfo] = useState<any | null>(null);
   const [recipientAddress, setRecipientAddress] = useState("");
   const [ownedDeposits, setOwnedDeposits] = useState<any[]>([]);
@@ -86,7 +86,8 @@ export default function TimeLockedDepositUI() {
 
       const deposits: any[] = [];
       for (const ev of relevant) {
-        const id = ev.parsedJson.deposit_id;
+        const fields = ev.parsedJson as any;
+        const id = fields.deposit_id;
         try {
           const res = await client.getObject({
             id,
@@ -146,7 +147,7 @@ export default function TimeLockedDepositUI() {
         ],
       });
 
-      const result = await signAndExecuteTransaction({ transaction: tx });
+      await signAndExecuteTransaction({ transaction: tx });
 
       alert("Deposit created! Refresh to see it.");
       setAmountInput("");
@@ -279,11 +280,11 @@ export default function TimeLockedDepositUI() {
         <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 mb-8 border border-white/20 shadow-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold bg-white bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold bg-white bg-clip-text text-transparent">
                 TimeLocked Deposits
               </h1>
             </div>
-            <div className="scale-110">
+            <div className="scale-100">
               <ConnectButton />
             </div>
           </div>
@@ -454,7 +455,7 @@ export default function TimeLockedDepositUI() {
 
               {ownedDeposits.length > 0 && (
                 <div className="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
-                  {ownedDeposits.map((deposit, index) => (
+                  {ownedDeposits.map((deposit) => (
                     <div
                       key={deposit.objectId}
                       className={`p-6 rounded-2xl cursor-pointer transition-all duration-200 border ${
@@ -616,26 +617,6 @@ export default function TimeLockedDepositUI() {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 3px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.3);
-          border-radius: 3px;
-        }
-
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.5);
-        }
-      `}</style>
     </div>
   );
 }
