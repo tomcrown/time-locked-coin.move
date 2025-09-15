@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ConnectButton,
   useCurrentAccount,
@@ -7,12 +7,10 @@ import {
 import { Transaction } from "@mysten/sui/transactions";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 
-// ----- IMPORTANT: update these constants to match your deployed package -----
 const PACKAGE_ID =
-  "0x3267853684c621750d182868a26fbe51adc96f7e169cb435da7a57204ac4b10a"; // e.g. 0xabc...
-const MODULE_NAME = "deposit"; // your Move module name
-const CLOCK_OBJECT_ID = "0x6"; // common clock object id on testnet/mainnet
-// ---------------------------------------------------------------------------
+  "0x3267853684c621750d182868a26fbe51adc96f7e169cb435da7a57204ac4b10a";
+const MODULE_NAME = "deposit"; // fix module path
+const CLOCK_OBJECT_ID = "0x6";
 
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 
@@ -21,18 +19,17 @@ export default function TimeLockedDepositUI() {
   const { mutateAsync: signAndExecuteTransaction } =
     useSignAndExecuteTransaction();
 
-  // Generic UI state
   const [amountInput, setAmountInput] = useState("");
   const [durationMinutes, setDurationMinutes] = useState<number>(60);
-  const [depositObjectId, setDepositObjectId] = useState("");
+  const [selectedDepositId, setSelectedDepositId] = useState("");
   const [coinType, setCoinType] = useState<string>("");
-
   const [info, setInfo] = useState<any | null>(null);
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [ownedDeposits, setOwnedDeposits] = useState<any[]>([]);
+  const [loadingDeposits, setLoadingDeposits] = useState(false);
+  const [loadingInfo, setLoadingInfo] = useState(false);
 
   const amount = parseFloat(amountInput || "0");
-
-  const [recipientAddress, setRecipientAddress] = useState("");
-
   const isCreateDisabled =
     !currentAccount ||
     !amount ||
@@ -40,19 +37,93 @@ export default function TimeLockedDepositUI() {
     durationMinutes <= 0 ||
     !recipientAddress;
 
-  const isCreateCustomDisabled =
-    !currentAccount ||
-    !coinType ||
-    !amount ||
-    amount <= 0 ||
-    durationMinutes <= 0;
-
-  // Utility: convert human amount to mist (assumes 9 decimals like SUI)
   function toMist(n: number) {
     return BigInt(Math.floor(n * 1_000_000_000));
   }
 
-  // Create deposit (SUI default)
+  // Auto-fetch deposits when account changes
+  useEffect(() => {
+    if (currentAccount?.address) {
+      fetchOwnedDeposits();
+    } else {
+      setOwnedDeposits([]);
+      setInfo(null);
+      setSelectedDepositId("");
+    }
+  }, [currentAccount?.address]);
+
+  // Auto-fetch deposit info when selectedDepositId changes
+  useEffect(() => {
+    if (selectedDepositId) {
+      fetchDepositInfo(selectedDepositId);
+    } else {
+      setInfo(null);
+    }
+  }, [selectedDepositId]);
+
+  // ----------------
+  // Fetch owned deposits
+  // ----------------
+  async function fetchOwnedDeposits() {
+    if (!currentAccount?.address) return;
+
+    setLoadingDeposits(true);
+    try {
+      const depositorEvents = await client.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::deposit::DepositCreated<0x2::sui::SUI>`,
+        },
+        limit: 50,
+      });
+
+      const relevant = depositorEvents.data.filter((ev: any) => {
+        const fields = ev.parsedJson;
+        return (
+          fields.depositor === currentAccount.address ||
+          fields.recipient === currentAccount.address
+        );
+      });
+
+      const deposits: any[] = [];
+      for (const ev of relevant) {
+        const id = ev.parsedJson.deposit_id;
+        try {
+          const res = await client.getObject({
+            id,
+            options: { showContent: true },
+          });
+          if (res.data?.content?.dataType === "moveObject") {
+            const fields = (res.data.content as any).fields;
+            deposits.push({
+              objectId: res.data.objectId,
+              depositor: fields.depositor,
+              recipient: fields.recipient,
+              amount:
+                fields.balance?.fields?.value ??
+                fields.balance?.value ??
+                fields.balance,
+              start_time: fields.start_time,
+              duration: fields.duration,
+              unlock_time: fields.unlock_time,
+              isUnlocked: Date.now() >= Number(fields.unlock_time),
+            });
+          }
+        } catch (err) {
+          console.warn("Failed to fetch deposit", id, err);
+        }
+      }
+
+      setOwnedDeposits(deposits);
+    } catch (error) {
+      console.error("Failed to fetch deposits:", error);
+    } finally {
+      setLoadingDeposits(false);
+    }
+  }
+
+  // ----------------
+  // Contract calls
+  // ----------------
   async function createDeposit() {
     if (!currentAccount) return alert("Connect wallet first");
     if (!amount || durationMinutes <= 0) return alert("Invalid input");
@@ -69,135 +140,36 @@ export default function TimeLockedDepositUI() {
         typeArguments: ["0x2::sui::SUI"],
         arguments: [
           coin,
+          tx.pure.address(recipientAddress),
           tx.pure.u64(durationMinutes),
           tx.object(CLOCK_OBJECT_ID),
         ],
       });
 
-      const result = (await signAndExecuteTransaction({
-        transaction: tx,
-      })) as any;
-      const digest = result?.digest || result?.effects?.transactionDigest;
+      const result = await signAndExecuteTransaction({ transaction: tx });
 
-      const txBlock = (await client.getTransactionBlock({
-        digest,
-        options: { showObjectChanges: true },
-      })) as any;
-
-      // Find created object for TimeDeposit<0x2::sui::SUI>
-      const created =
-        txBlock.objectChanges?.filter((c: any) => c.type === "created") || [];
-      const depositObj = created.find(
-        (c: any) =>
-          c.objectType?.includes("TimeDeposit<0x2::sui::SUI>") ||
-          c.objectType?.includes(
-            "time_locked_deposit::TimeDeposit<0x2::sui::SUI>"
-          )
-      );
-
-      if (depositObj) {
-        setDepositObjectId(depositObj.objectId);
-        alert(`Deposit created: ${depositObj.objectId}`);
-      } else {
-        alert("Created, but couldn't find deposit object in events.");
-      }
-
+      alert("Deposit created! Refresh to see it.");
       setAmountInput("");
       setDurationMinutes(60);
+
+      // refresh deposits via events
+      fetchOwnedDeposits();
     } catch (e: any) {
       console.error(e);
       alert(`Create deposit failed: ${e?.toString()}`);
     }
   }
 
-  // Create deposit for custom coin type
-  async function createDepositCustom() {
-    if (!currentAccount) return alert("Connect wallet first");
-    if (!coinType) return alert("Set coin type (full Move type)");
-    if (!amount || durationMinutes <= 0) return alert("Invalid input");
-
-    try {
-      // get coins of that type from RPC
-      const coins = await client.getCoins({
-        owner: currentAccount.address,
-        coinType,
-      });
-      if (!coins.data.length)
-        return alert("No coins of that type found in your wallet");
-
-      // find coin object with enough balance
-      const needed = toMist(amount);
-      const coinObj = coins.data.find((c: any) => BigInt(c.balance) >= needed);
-      if (!coinObj)
-        return alert(
-          "No single coin object has enough balance. Split or combine coins manually."
-        );
-
-      const tx = new Transaction();
-      tx.setGasBudget(100000000);
-
-      const [splitCoin] = tx.splitCoins(tx.object(coinObj.coinObjectId), [
-        tx.pure.u64(needed),
-      ]);
-
-      tx.moveCall({
-        target: `${PACKAGE_ID}::${MODULE_NAME}::create_deposit`,
-        typeArguments: [coinType],
-        arguments: [
-          splitCoin,
-          tx.pure.u64(durationMinutes),
-          tx.object(CLOCK_OBJECT_ID),
-        ],
-      });
-
-      const result = (await signAndExecuteTransaction({
-        transaction: tx,
-      })) as any;
-      const digest = result?.digest || result?.effects?.transactionDigest;
-
-      const txBlock = (await client.getTransactionBlock({
-        digest,
-        options: { showObjectChanges: true },
-      })) as any;
-
-      const created =
-        txBlock.objectChanges?.filter((c: any) => c.type === "created") || [];
-      const depositObj = created.find(
-        (c: any) =>
-          c.objectType?.includes(`TimeDeposit<${coinType}>`) ||
-          c.objectType?.includes(
-            `time_locked_deposit::TimeDeposit<${coinType}>`
-          )
-      );
-
-      if (depositObj) {
-        setDepositObjectId(depositObj.objectId);
-        alert(`Deposit created: ${depositObj.objectId}`);
-      } else {
-        alert("Created, but couldn't find deposit object in events.");
-      }
-
-      setAmountInput("");
-      setDurationMinutes(60);
-    } catch (e: any) {
-      console.error(e);
-      alert(`Create deposit (custom) failed: ${e?.toString()}`);
-    }
-  }
-
-  // Withdraw by depositor (immediate allowed)
   async function withdrawAsDepositor() {
-    if (!depositObjectId || !currentAccount)
-      return alert("Provide deposit object id and connect wallet");
-
+    if (!selectedDepositId || !currentAccount)
+      return alert("Select a deposit and connect wallet");
     try {
       const tx = new Transaction();
       tx.moveCall({
         target: `${PACKAGE_ID}::${MODULE_NAME}::withdraw_by_depositor`,
         typeArguments: [coinType?.trim() === "" ? "0x2::sui::SUI" : coinType],
-        arguments: [tx.object(depositObjectId), tx.object(CLOCK_OBJECT_ID)],
+        arguments: [tx.object(selectedDepositId), tx.object(CLOCK_OBJECT_ID)],
       });
-
       const result = (await signAndExecuteTransaction({
         transaction: tx,
       })) as any;
@@ -207,29 +179,27 @@ export default function TimeLockedDepositUI() {
         alert(`Withdraw failed: ${err}`);
         return;
       }
-
       alert("Withdraw successful (depositor)");
-      setDepositObjectId("");
+      setSelectedDepositId("");
       setInfo(null);
+      // Refresh the deposits list
+      fetchOwnedDeposits();
     } catch (e: any) {
       console.error(e);
       alert(`Withdraw failed: ${e?.toString()}`);
     }
   }
 
-  // Withdraw by recipient (only after unlock)
   async function withdrawAsRecipient() {
-    if (!depositObjectId || !currentAccount)
-      return alert("Provide deposit object id and connect wallet");
-
+    if (!selectedDepositId || !currentAccount)
+      return alert("Select a deposit and connect wallet");
     try {
       const tx = new Transaction();
       tx.moveCall({
         target: `${PACKAGE_ID}::${MODULE_NAME}::withdraw_by_recipient`,
         typeArguments: [coinType?.trim() === "" ? "0x2::sui::SUI" : coinType],
-        arguments: [tx.object(depositObjectId), tx.object(CLOCK_OBJECT_ID)],
+        arguments: [tx.object(selectedDepositId), tx.object(CLOCK_OBJECT_ID)],
       });
-
       const result = (await signAndExecuteTransaction({
         transaction: tx,
       })) as any;
@@ -239,37 +209,28 @@ export default function TimeLockedDepositUI() {
         alert(`Withdraw failed: ${err}`);
         return;
       }
-
       alert("Withdraw successful (recipient)");
-      setDepositObjectId("");
+      setSelectedDepositId("");
       setInfo(null);
+      // Refresh the deposits list
+      fetchOwnedDeposits();
     } catch (e: any) {
       console.error(e);
-      const ser = e?.toString() || "";
-      if (
-        ser.includes("code 1") ||
-        ser.includes("ETooEarly") ||
-        ser.includes("code 2")
-      ) {
-        alert("Too early to withdraw. Wait until unlock time.");
-      } else {
-        alert(`Withdraw failed: ${ser}`);
-      }
+      alert(`Withdraw failed: ${e?.toString()}`);
     }
   }
 
-  // Fetch deposit info
-  async function fetchDepositInfo() {
-    if (!depositObjectId) return alert("Provide deposit object id");
+  async function fetchDepositInfo(depositId: string) {
+    if (!depositId) return;
 
+    setLoadingInfo(true);
     try {
       const res = await client.getObject({
-        id: depositObjectId,
+        id: depositId,
         options: { showContent: true },
       });
       if (res.data?.content?.dataType === "moveObject") {
         const fields = (res.data.content as any).fields;
-        // structure from Move: depositor, recipient, balance, start_time, duration, unlock_time
         setInfo({
           depositor: fields.depositor,
           recipient: fields.recipient,
@@ -280,14 +241,21 @@ export default function TimeLockedDepositUI() {
         });
       } else {
         alert("Object is not a TimeDeposit move object");
+        setInfo(null);
       }
     } catch (e) {
       console.error(e);
       alert("Failed to fetch deposit info");
+      setInfo(null);
+    } finally {
+      setLoadingInfo(false);
     }
   }
 
-  // Helper to format ms -> readable
+  function selectDeposit(deposit: any) {
+    setSelectedDepositId(deposit.objectId);
+  }
+
   function fmtMs(ms: number | string | undefined) {
     if (!ms) return "-";
     const n = Number(ms);
@@ -295,182 +263,379 @@ export default function TimeLockedDepositUI() {
     return new Date(n).toLocaleString();
   }
 
+  function formatAmount(amount: string | number) {
+    const n = Number(amount);
+    if (Number.isNaN(n)) return amount;
+    return (n / 1_000_000_000).toFixed(4) + " SUI";
+  }
+
+  // ----------------
+  // UI
+  // ----------------
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-black text-white p-6">
-      <div className="max-w-3xl mx-auto bg-slate-800/60 rounded-2xl p-6 shadow-lg">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">TimeLocked Deposit UI</h1>
-          <ConnectButton />
+    <div className="min-h-screen bg-black text-white p-4">
+      <div className="relative max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 mb-8 border border-white/20 shadow-2xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold bg-white bg-clip-text text-transparent">
+                TimeLocked Deposits
+              </h1>
+            </div>
+            <div className="scale-110">
+              <ConnectButton />
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          <section className="p-4 bg-slate-900/40 rounded">
-            <h2 className="font-semibold">Create Deposit (SUI)</h2>
-            <label className="block mt-3 text-sm">Amount (SUI)</label>
-            <input
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              placeholder="e.g. 1.5"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-            />
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Left Column */}
+          <div className="space-y-8">
+            {/* Create Deposit Section */}
+            <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+              <div className="flex items-center mb-6">
+                <h2 className="text-2xl font-bold">Create New Deposit</h2>
+              </div>
 
-            <label className="block mt-3 text-sm">Recipient Address</label>
-            <input
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              placeholder="0xRecipient..."
-              value={recipientAddress}
-              onChange={(e) => setRecipientAddress(e.target.value)}
-            />
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-3">
+                    Amount (SUI)
+                  </label>
+                  <div className="relative">
+                    <input
+                      className="w-full p-4 rounded-2xl bg-white/5 border border-white/20 text-white placeholder-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/50 focus:outline-none transition-all duration-200"
+                      placeholder="Enter amount (e.g. 1.5)"
+                      value={amountInput}
+                      onChange={(e) => setAmountInput(e.target.value)}
+                    />
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 font-medium">
+                      SUI
+                    </div>
+                  </div>
+                </div>
 
-            <label className="block mt-3 text-sm">Duration (minutes)</label>
-            <input
-              type="number"
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              value={durationMinutes}
-              onChange={(e) =>
-                setDurationMinutes(parseInt(e.target.value || "0"))
-              }
-            />
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-3">
+                    Recipient Address
+                  </label>
+                  <input
+                    className="w-full p-4 rounded-2xl bg-white/5 border border-white/20 text-white placeholder-slate-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/50 focus:outline-none transition-all duration-200"
+                    placeholder="0xRecipient..."
+                    value={recipientAddress}
+                    onChange={(e) => setRecipientAddress(e.target.value)}
+                  />
+                </div>
 
-            <button
-              onClick={createDeposit}
-              disabled={isCreateDisabled}
-              className={`mt-4 w-full px-4 py-2 rounded font-medium ${
-                isCreateDisabled
-                  ? "bg-gray-500 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              Create Deposit (SUI)
-            </button>
-          </section>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-3">
+                    Lock Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full p-4 rounded-2xl bg-white/5 border border-white/20 text-white placeholder-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/50 focus:outline-none transition-all duration-200"
+                    value={durationMinutes}
+                    onChange={(e) =>
+                      setDurationMinutes(parseInt(e.target.value || "0"))
+                    }
+                  />
+                </div>
 
-          <section className="p-4 bg-slate-900/40 rounded">
-            <h2 className="font-semibold">Create Deposit (Custom Coin)</h2>
-            <label className="block mt-3 text-sm">
-              Coin Type (full Move type)
-            </label>
-            <input
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              placeholder="e.g. 0xYourPkg::coin::COIN"
-              value={coinType}
-              onChange={(e) => setCoinType(e.target.value)}
-            />
-
-            <label className="block mt-3 text-sm">Amount (human units)</label>
-            <input
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              placeholder="e.g. 100"
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-            />
-
-            <label className="block mt-3 text-sm">Duration (minutes)</label>
-            <input
-              type="number"
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              value={durationMinutes}
-              onChange={(e) =>
-                setDurationMinutes(parseInt(e.target.value || "0"))
-              }
-            />
-
-            <button
-              onClick={createDepositCustom}
-              disabled={isCreateCustomDisabled}
-              className={`mt-4 w-full px-4 py-2 rounded font-medium ${
-                isCreateCustomDisabled
-                  ? "bg-gray-500 cursor-not-allowed"
-                  : "bg-yellow-600 hover:bg-yellow-700"
-              }`}
-            >
-              Create Deposit (Custom)
-            </button>
-          </section>
-
-          <section className="p-4 bg-slate-900/40 rounded">
-            <h2 className="font-semibold">Actions / Query</h2>
-
-            <label className="block mt-2 text-sm">Deposit Object ID</label>
-            <input
-              className="mt-1 w-full p-2 rounded bg-slate-700 text-white"
-              placeholder="enter object id"
-              value={depositObjectId}
-              onChange={(e) => setDepositObjectId(e.target.value)}
-            />
-
-            <div className="grid grid-cols-1 gap-3 mt-4">
-              <button
-                onClick={withdrawAsDepositor}
-                className="w-full px-4 py-2 rounded bg-purple-600 hover:bg-purple-700"
-              >
-                Withdraw (Depositor)
-              </button>
-              <button
-                onClick={withdrawAsRecipient}
-                className="w-full px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-700"
-              >
-                Withdraw (Recipient)
-              </button>
-              <button
-                onClick={fetchDepositInfo}
-                className="w-full px-4 py-2 rounded bg-green-600 hover:bg-green-700"
-              >
-                Fetch Deposit Info
-              </button>
+                <button
+                  onClick={createDeposit}
+                  disabled={isCreateDisabled}
+                  className={`w-full py-4 rounded-2xl font-semibold text-lg transition-all duration-200 ${
+                    isCreateDisabled
+                      ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                  }`}
+                >
+                  {isCreateDisabled ? "Fill All Fields" : "Create Deposit"}
+                </button>
+              </div>
             </div>
-          </section>
 
-          <section className="p-4 bg-slate-900/30 rounded">
-            <h2 className="font-semibold">Deposit Info</h2>
-            {!info && (
-              <p className="text-sm text-slate-400 mt-2">No info loaded</p>
-            )}
+            {/* Actions Section */}
+            {selectedDepositId && (
+              <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+                <div className="flex items-center mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold">Withdraw Actions</h2>
+                    <p className="text-sm text-slate-300">
+                      Selected: {selectedDepositId.slice(0, 16)}...
+                    </p>
+                  </div>
+                </div>
 
-            {info && (
-              <div className="mt-3 text-sm bg-slate-800 p-3 rounded">
-                <p>
-                  <strong>Depositor:</strong> {info.depositor}
-                </p>
-                <p>
-                  <strong>Recipient:</strong> {info.recipient}
-                </p>
-                <p>
-                  <strong>Amount (raw):</strong>{" "}
-                  {info.amount?.toString?.() ?? info.amount}
-                </p>
-                <p>
-                  <strong>Start time (ms):</strong> {info.start_time}
-                </p>
-                <p>
-                  <strong>Start date:</strong> {fmtMs(info.start_time)}
-                </p>
-                <p>
-                  <strong>Duration (ms):</strong> {info.duration}
-                </p>
-                <p>
-                  <strong>Unlock time:</strong> {fmtMs(info.unlock_time)}
-                </p>
-                <p className="mt-2">
-                  <strong>Status:</strong>{" "}
-                  {Date.now() >= Number(info.unlock_time) ? (
-                    <span className="text-green-400">Unlocked</span>
-                  ) : (
-                    <span className="text-yellow-400">Locked</span>
-                  )}
-                </p>
+                <div className="space-y-4">
+                  <button
+                    onClick={withdrawAsDepositor}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white font-semibold text-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                  >
+                    Withdraw as Depositor
+                  </button>
+                  <button
+                    onClick={withdrawAsRecipient}
+                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 text-white font-semibold text-lg transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                  >
+                    Withdraw as Recipient
+                  </button>
+                </div>
               </div>
             )}
-          </section>
+          </div>
 
-          <p className="text-xs text-slate-400">
-            Note: update{" "}
-            <code className="bg-slate-700 px-1 rounded">PACKAGE_ID</code> and
-            other constants to match your deployment. This UI assumes 9 decimals
-            (SUI-like) for amount conversion.
-          </p>
+          {/* Right Column */}
+          <div className="space-y-8">
+            {/* Your Deposits Section */}
+            <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center">
+                  <h2 className="text-2xl font-bold">Your Deposits</h2>
+                </div>
+                <button
+                  onClick={fetchOwnedDeposits}
+                  disabled={!currentAccount || loadingDeposits}
+                  className="px-6 py-3 text-sm bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 border border-white/20"
+                >
+                  {loadingDeposits ? "Loading..." : "Refresh"}
+                </button>
+              </div>
+
+              {!currentAccount && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <svg
+                      className="w-8 h-8 text-slate-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-slate-300">
+                    Connect your wallet to view deposits
+                  </p>
+                </div>
+              )}
+
+              {currentAccount &&
+                ownedDeposits.length === 0 &&
+                !loadingDeposits && (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <svg
+                        className="w-8 h-8 text-slate-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-slate-300">No deposits found</p>
+                    <p className="text-sm text-slate-400 mt-2">
+                      Create your first deposit to get started
+                    </p>
+                  </div>
+                )}
+
+              {ownedDeposits.length > 0 && (
+                <div className="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
+                  {ownedDeposits.map((deposit, index) => (
+                    <div
+                      key={deposit.objectId}
+                      className={`p-6 rounded-2xl cursor-pointer transition-all duration-200 border ${
+                        selectedDepositId === deposit.objectId
+                          ? "bg-blue-500/20 border-blue-400 shadow-lg transform scale-[1.02]"
+                          : "bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20"
+                      }`}
+                      onClick={() => selectDeposit(deposit)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center mb-2">
+                            <p className="text-xl font-bold text-white">
+                              {formatAmount(deposit.amount)}
+                            </p>
+                            <span
+                              className={`ml-3 px-3 py-1 text-xs font-semibold rounded-full ${
+                                deposit.isUnlocked
+                                  ? "bg-green-500/20 text-green-300 border border-green-500/30"
+                                  : "bg-yellow-500/20 text-yellow-300 border border-yellow-500/30"
+                              }`}
+                            >
+                              {deposit.isUnlocked ? "Unlocked" : "Locked"}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-300 mb-1">
+                            To: {deposit.recipient?.slice(0, 12)}...
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            Unlock: {fmtMs(deposit.unlock_time)}
+                          </p>
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="text-xs text-slate-400">
+                            ID: {deposit.objectId.slice(0, 8)}...
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Deposit Details */}
+            {loadingInfo && (
+              <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+                    <svg
+                      className="w-8 h-8 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </div>
+                  <p className="text-slate-300">Loading deposit details...</p>
+                </div>
+              </div>
+            )}
+
+            {info && !loadingInfo && (
+              <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+                <div className="flex items-center mb-6">
+                  <h2 className="text-2xl font-bold">Deposit Details</h2>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-sm text-slate-400 mb-1">Depositor</p>
+                      <p className="font-mono text-sm text-white break-all">
+                        {info.depositor}
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-sm text-slate-400 mb-1">Recipient</p>
+                      <p className="font-mono text-sm text-white break-all">
+                        {info.recipient}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                        <p className="text-sm text-slate-400 mb-1">Amount</p>
+                        <p className="text-lg font-bold text-white">
+                          {formatAmount(info.amount)}
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                        <p className="text-sm text-slate-400 mb-1">Status</p>
+                        {Date.now() >= Number(info.unlock_time) ? (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-500/20 text-green-300 border border-green-500/30">
+                            <div className="w-2 h-2 bg-green-400 rounded-full mr-2"></div>
+                            Unlocked
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                            <div className="w-2 h-2 bg-yellow-400 rounded-full mr-2 animate-pulse"></div>
+                            Locked
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-sm text-slate-400 mb-1">Start Date</p>
+                      <p className="text-white">{fmtMs(info.start_time)}</p>
+                    </div>
+
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                      <p className="text-sm text-slate-400 mb-1">Unlock Time</p>
+                      <p className="text-white">{fmtMs(info.unlock_time)}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!selectedDepositId &&
+              currentAccount &&
+              ownedDeposits.length > 0 && (
+                <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 border border-white/20 shadow-2xl">
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <svg
+                        className="w-8 h-8 text-slate-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"
+                        />
+                      </svg>
+                    </div>
+                    <p className="text-slate-300">
+                      Select a deposit to view details
+                    </p>
+                    <p className="text-sm text-slate-400 mt-2">
+                      Click on any deposit above to view details and perform
+                      actions
+                    </p>
+                  </div>
+                </div>
+              )}
+          </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.3);
+          border-radius: 3px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.5);
+        }
+      `}</style>
     </div>
   );
 }
