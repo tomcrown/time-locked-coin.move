@@ -68,7 +68,7 @@ public struct DepositWithdrawn<phantom CoinType> has copy, drop, store {
 /// - Coins are locked in a `TimeDeposit` object.
 /// - Only the recipient can withdraw after unlock_time.
 /// - Depositor may withdraw anytime before unlock_time.
-public entry fun create_deposit<CoinType>(
+public fun create_deposit<CoinType>(
     coin: Coin<CoinType>,        // Coin to lock
     recipient: address,          // Withdrawal recipient
     duration_minutes: u64,       // Lock duration in minutes
@@ -126,7 +126,8 @@ public entry fun create_deposit<CoinType>(
 /// Withdraw funds by the depositor (early withdrawal).
 /// - Depositor may always reclaim funds regardless of unlock_time.
 /// - Useful for cancellation of deposit before recipient unlocks.
-public entry fun withdraw_by_depositor<CoinType>(
+#[allow(lint(self_transfer))]
+public fun withdraw_by_depositor<CoinType>(
     deposit: TimeDeposit<CoinType>,
     clock: &Clock,
     ctx: &mut TxContext
@@ -171,7 +172,8 @@ public entry fun withdraw_by_depositor<CoinType>(
 /// Withdraw funds by the recipient (after unlock).
 /// - Only allowed if current_time >= unlock_time.
 /// - Prevents early access to locked funds.
-public entry fun withdraw_by_recipient<CoinType>(
+#[allow(lint(self_transfer))]
+public fun withdraw_by_recipient<CoinType>(
     deposit: TimeDeposit<CoinType>,
     clock: &Clock,
     ctx: &mut TxContext
