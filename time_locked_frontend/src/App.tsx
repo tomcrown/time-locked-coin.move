@@ -9,7 +9,7 @@ import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 
 const PACKAGE_ID =
   "0x3267853684c621750d182868a26fbe51adc96f7e169cb435da7a57204ac4b10a";
-const MODULE_NAME = "deposit"; // fix module path
+const MODULE_NAME = "deposit";
 const CLOCK_OBJECT_ID = "0x6";
 
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
@@ -183,7 +183,6 @@ export default function TimeLockedDepositUI() {
       alert("Withdraw successful (depositor)");
       setSelectedDepositId("");
       setInfo(null);
-      // Refresh the deposits list
       fetchOwnedDeposits();
     } catch (e: any) {
       console.error(e);
@@ -213,7 +212,6 @@ export default function TimeLockedDepositUI() {
       alert("Withdraw successful (recipient)");
       setSelectedDepositId("");
       setInfo(null);
-      // Refresh the deposits list
       fetchOwnedDeposits();
     } catch (e: any) {
       console.error(e);
