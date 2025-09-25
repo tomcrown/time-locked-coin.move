@@ -275,7 +275,7 @@ export default function TimeLockedDepositUI() {
     <div className="min-h-screen bg-black text-white p-4">
       <div className="relative max-w-6xl mx-auto">
         {/* Header */}
-        <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 mb-8 mt-10 border border-white/20 shadow-2xl">
+        <div className="backdrop-blur-xl bg-white/10 rounded-3xl p-8 mb-8 mt-18 border border-white/20 shadow-2xl">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold bg-white bg-clip-text text-transparent">
